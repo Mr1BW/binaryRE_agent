@@ -40,7 +40,6 @@ from langchain_community.tools import (
 from langchain_community.tools import ShellTool
 from langgraph.prebuilt import create_react_agent
 from langgraph.managed import IsLastStep, RemainingSteps
-from langchain_core.rate_limiters import InMemoryRateLimiter
 import tiktoken
 import asyncio
 import shutil
@@ -100,12 +99,6 @@ logging.info(f"Model name: {model_name}")
 
 model_context_length = utils.get_context_length(model_name)
 
-rate_limiter = InMemoryRateLimiter(
-    requests_per_second=0.20,  # <-- Super slow! We can only make a request once every 10 seconds!!
-    check_every_n_seconds=0.25,  # Wake up every 100 ms to check whether allowed to make a request,
-    max_bucket_size=14,  # Controls the maximum burst size.
-)
-
 openai_base_url = os.getenv(
     "OPENAI_BASE_URL"
 )  # Support DeepSeek and other OpenAI-compatible providers
@@ -121,7 +114,6 @@ if "gemini" in model_name:
             streaming=True,
             base_url=openai_base_url,
             # content_null_value=content_null_value,
-            rate_limiter=rate_limiter,
             max_retries=10,
         )
     else:
@@ -131,7 +123,6 @@ if "gemini" in model_name:
             streaming=True,
             base_url=openai_base_url,
             content_null_value=content_null_value,
-            rate_limiter=rate_limiter,
             max_retries=10,
         )
 else:
@@ -142,7 +133,6 @@ else:
         openai_api_key=api_key,
         streaming=True,
         base_url=openai_base_url,
-        rate_limiter=rate_limiter,
         max_retries=10,
         reasoning_effort="low"
         if (
