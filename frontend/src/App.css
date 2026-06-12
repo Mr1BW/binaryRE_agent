@@ -633,10 +633,10 @@ html, body, #root {
 .message-markdown code:not(.md-inline-code) {
   font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', Menlo, Consolas, monospace;
   font-size: 12.5px;
-  background: none;
-  color: #ffffff;
-  padding: 0;
-  border-radius: 0;
+  background: rgba(175, 184, 193, 0.2);
+  color: #cf222e;
+  padding: 2px 5px;
+  border-radius: 4px;
   font-weight: 400;
   border: none;
 }
@@ -645,10 +645,10 @@ html, body, #root {
 
 .md-code-block {
   margin: 14px 0;
-  border: 1px solid #30363d;
+  border: 1px solid #d0d7de;
   border-radius: 4px;
   overflow: hidden;
-  background: #161b22;
+  background: #f6f8fa;
 }
 
 .md-code-header {
@@ -656,7 +656,92 @@ html, body, #root {
   align-items: center;
   justify-content: space-between;
   padding: 6px 14px;
-  background: #0d1117;
+  background: #eaeef2;
+  border-bottom: 1px solid #d0d7de;
+}
+
+.md-code-lang {
+  font-family: 'JetBrains Mono', 'SF Mono', Menlo, monospace;
+  font-size: 11px;
+  font-weight: 600;
+  color: #57606a;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.md-code-copy {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 10px;
+  border: 1px solid #d0d7de;
+  border-radius: 3px;
+  background: #ffffff;
+  color: #57606a;
+  font-size: 11px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 120ms ease;
+  font-family: 'JetBrains Mono', 'SF Mono', Menlo, monospace;
+}
+
+.md-code-copy:hover {
+  background: #f6f8fa;
+  border-color: #8b949e;
+  color: #24292f;
+}
+
+.md-code-copy svg {
+  flex-shrink: 0;
+}
+
+.md-code-pre {
+  margin: 0;
+  padding: 16px 20px;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', Menlo, monospace;
+  font-size: 13px;
+  line-height: 1.6;
+  color: #24292f;
+  background: transparent;
+  overflow-x: auto;
+}
+
+.md-code-pre code {
+  background: none;
+  padding: 0;
+  font-size: inherit;
+  color: inherit;
+  font-family: inherit;
+}
+
+.message-markdown pre:not(.md-code-pre) {
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', Menlo, monospace;
+  font-size: 13px;
+  line-height: 1.6;
+  background: #f6f8fa;
+  color: #24292f;
+  border: 1px solid #d0d7de;
+  border-radius: 4px;
+  padding: 16px 20px;
+  overflow-x: auto;
+  margin: 10px 0;
+}
+
+.message-markdown pre:not(.md-code-pre) code {
+  background: none;
+  padding: 0;
+  border-radius: 0;
+  font-size: inherit;
+  color: inherit;
+  border: none;
+}
+
+.md-code-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 14px;
+  background: #161b22;
   border-bottom: 1px solid #21262d;
 }
 
@@ -695,9 +780,28 @@ html, body, #root {
   flex-shrink: 0;
 }
 
+.md-code-pre {
+  margin: 0;
+  padding: 16px 20px;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', Menlo, monospace;
+  font-size: 13px;
+  line-height: 1.6;
+  color: #c9d1d9;
+  background: transparent;
+  overflow-x: auto;
+}
+
+.md-code-pre code {
+  background: none;
+  padding: 0;
+  font-size: inherit;
+  color: inherit;
+  font-family: inherit;
+}
+
 /* ---- Legacy pre/code fallback ---- */
 
-.message-markdown pre {
+.message-markdown pre:not(.md-code-pre) {
   font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', Menlo, monospace;
   font-size: 13px;
   line-height: 1.6;
@@ -710,7 +814,7 @@ html, body, #root {
   margin: 10px 0;
 }
 
-.message-markdown pre code {
+.message-markdown pre:not(.md-code-pre) code {
   background: none;
   padding: 0;
   border-radius: 0;
