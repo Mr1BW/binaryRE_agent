@@ -177,3 +177,5 @@ frontend/dist/*
 .opencode/*
 .ruff_cache/*
 AGENTS.md
+assets/
+start.sh
