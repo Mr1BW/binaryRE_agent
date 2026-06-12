@@ -1,6 +1,5 @@
-import ReactMarkdown from 'react-markdown';
-import remarkGfm from 'remark-gfm';
 import type { ChatMessage } from '../types';
+import MarkdownRenderer from './MarkdownRenderer';
 
 interface MessageBubbleProps {
   message: ChatMessage;
@@ -46,11 +45,7 @@ export default function MessageBubble({ message }: MessageBubbleProps) {
             {message.content || '\u00A0'}
           </div>
         ) : (
-          <div className="message-text message-markdown">
-            <ReactMarkdown remarkPlugins={[remarkGfm]}>
-              {message.content || '\u00A0'}
-            </ReactMarkdown>
-          </div>
+          <MarkdownRenderer content={message.content} thinking={message.thinking} />
         )}
       </div>
     </div>

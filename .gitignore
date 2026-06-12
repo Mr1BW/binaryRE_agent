@@ -179,3 +179,7 @@ frontend/dist/*
 AGENTS.md
 assets/
 start.sh
+.agents/*
+docs/*
+projects/*
+skills-lock.json

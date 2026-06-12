@@ -42,7 +42,7 @@ export default function Sidebar({
             <path d="M2 17l10 5 10-5"/>
             <path d="M2 12l10 5 10-5"/>
           </svg>
-          <span>DecompAI</span>
+          <span>binaryRE</span>
         </div>
         <p className="sidebar-subtitle">二进制分析控制台</p>
       </div>
@@ -135,7 +135,7 @@ export default function Sidebar({
       </div>
 
       <div className="sidebar-footer">
-        <span>DecompAI v0.1</span>
+        <span>binaryRE v0.1</span>
         <span className="dot">·</span>
         <span>Kali + Ghidra + r2</span>
       </div>

@@ -10,6 +10,7 @@ export interface Session {
 export interface ChatMessage {
   role: 'user' | 'assistant';
   content: string;
+  thinking?: string;
   metadata?: {
     title?: string;
     id?: string;

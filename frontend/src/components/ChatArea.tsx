@@ -113,9 +113,6 @@ export default function ChatArea({
             )}
           </div>
         </div>
-        <p className="chat-disclaimer">
-          DecompAI 在沙箱化的 Kali Linux 容器中运行分析工具。
-        </p>
       </div>
     </div>
   );

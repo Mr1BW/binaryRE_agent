@@ -3,7 +3,6 @@ import json
 import os
 import tempfile
 import uuid
-from datetime import datetime
 
 from fastapi import FastAPI, File, UploadFile, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -29,6 +28,7 @@ from src.main import (
     load_state,
     save_state,
     erase_session,
+    list_sessions,
 )
 
 
@@ -122,7 +122,11 @@ def _state_to_history(state: State) -> list[dict]:
         if isinstance(msg, HumanMessage):
             history.append({"role": "user", "content": msg.content})
         elif isinstance(msg, AIMessage):
-            history.append({"role": "assistant", "content": msg.content or ""})
+            entry: dict = {"role": "assistant", "content": msg.content or ""}
+            reasoning = (msg.additional_kwargs or {}).get("reasoning_content")
+            if reasoning:
+                entry["thinking"] = reasoning
+            history.append(entry)
             if msg.tool_calls:
                 for tc in msg.tool_calls:
                     tc_id = tc.get("id", "")
@@ -153,37 +157,6 @@ def _state_to_history(state: State) -> list[dict]:
                 }
             )
     return history
-
-
-def list_sessions():
-    sessions = []
-    root = settings.ANALYSIS_SESSIONS_ROOT
-    if not os.path.isdir(root):
-        return sessions
-    for session_hash in sorted(os.listdir(root), reverse=True):
-        session_path = os.path.join(root, session_hash)
-        if not os.path.isdir(session_path):
-            continue
-        binary_name = "未知"
-        for f in os.listdir(session_path):
-            if f not in (
-                "state.json",
-                settings.AGENT_WORKSPACE_NAME,
-            ) and os.path.isfile(os.path.join(session_path, f)):
-                binary_name = f
-                break
-        mtime = os.path.getmtime(session_path)
-        mtime_str = datetime.fromtimestamp(mtime).strftime("%m-%d %H:%M")
-        sessions.append(
-            {
-                "hash": session_hash[:12],
-                "full_hash": session_hash,
-                "binary": binary_name,
-                "time": mtime_str,
-                "has_state": os.path.exists(os.path.join(session_path, "state.json")),
-            }
-        )
-    return sessions
 
 
 async def _stream_chat(
@@ -232,13 +205,28 @@ async def _stream_chat(
                 msg.content = ""
 
             if isinstance(msg, AIMessageChunk):
+                reasoning = (msg.additional_kwargs or {}).get("reasoning_content") or ""
+                has_body = bool(msg.content) or bool(msg.tool_calls) or bool(reasoning)
+
                 if last_message_type is not AIMessageChunk:
-                    last_message_type = AIMessageChunk
-                    history.append({"role": "assistant", "content": msg.content})
+                    if has_body:
+                        last_message_type = AIMessageChunk
+                        entry: dict = {"role": "assistant", "content": msg.content}
+                        if reasoning:
+                            entry["thinking"] = reasoning
+                        history.append(entry)
                 else:
-                    history[-1]["content"] += msg.content
+                    if msg.content:
+                        history[-1]["content"] += msg.content
+                    if reasoning:
+                        history[-1]["thinking"] = (
+                            history[-1].get("thinking") or ""
+                        ) + reasoning
 
                 if msg.tool_calls:
+                    if last_message_type is not AIMessageChunk:
+                        history.append({"role": "assistant", "content": ""})
+                        last_message_type = AIMessageChunk
                     for tc in msg.tool_calls:
                         if not tc.get("name"):
                             continue
@@ -255,7 +243,6 @@ async def _stream_chat(
                                 },
                             }
                         )
-                    last_message_type = type("ToolCall", (), {})
 
                 if msg.tool_call_chunks:
                     for chunk in msg.tool_call_chunks:
@@ -273,7 +260,8 @@ async def _stream_chat(
                                 "args", ""
                             )
 
-                yield f"data: {json.dumps({'type': 'chunk', 'history': history})}\n\n"
+                if has_body or msg.tool_call_chunks:
+                    yield f"data: {json.dumps({'type': 'chunk', 'history': history})}\n\n"
 
             elif isinstance(msg, ToolMessageChunk):
                 if last_message_type is not ToolMessageChunk:
