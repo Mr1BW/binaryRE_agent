@@ -229,7 +229,7 @@ class DockerizedBashProcess:
 
         while True:
             elapsed = time.time() - start_time
-            remaining = max(0.5, self.timeout - elapsed)
+            remaining = max(0.1, self.timeout - elapsed)
 
             ready, _, _ = select.select([fd], [], [], remaining)
             if ready:
@@ -255,6 +255,23 @@ class DockerizedBashProcess:
                     output = "".join(output_lines)
                     timeout_msg = f"\n[TIMEOUT] Command exceeded {self.timeout}s limit and was terminated."
                     logger.warning(timeout_msg)
+                    try:
+                        self.persistent_process.stdin.write("q!!\nexit\n")
+                        self.persistent_process.stdin.flush()
+                        time.sleep(0.3)
+                    except Exception:
+                        pass
+                    try:
+                        self.persistent_process.stdin.close()
+                        self.persistent_process.terminate()
+                        self.persistent_process.wait(timeout=3)
+                    except Exception:
+                        try:
+                            self.persistent_process.kill()
+                            self.persistent_process.wait(timeout=3)
+                        except Exception:
+                            pass
+                    self._initialize_persistent_shell()
                     return output + timeout_msg
 
         output = "".join(output_lines)
