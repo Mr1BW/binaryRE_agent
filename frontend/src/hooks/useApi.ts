@@ -7,6 +7,7 @@ export function useApi() {
   const [sessions, setSessions] = useState<Session[]>([]);
   const [isUploading, setIsUploading] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
+  const readerRef = useRef<ReadableStreamDefaultReader<Uint8Array> | null>(null);
 
   const loadSessions = useCallback(async () => {
     try {
@@ -93,37 +94,43 @@ export function useApi() {
 
         const reader = res.body?.getReader();
         if (!reader) throw new Error('无法读取响应流');
+        readerRef.current = reader;
 
         const decoder = new TextDecoder();
         let buffer = '';
 
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
+        try {
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
 
-          buffer += decoder.decode(value, { stream: true });
-          const lines = buffer.split('\n');
-          buffer = lines.pop() || '';
+            buffer += decoder.decode(value, { stream: true });
+            const lines = buffer.split('\n');
+            buffer = lines.pop() || '';
 
-          for (const line of lines) {
-            if (line.startsWith('data: ')) {
-              try {
-                const event = JSON.parse(line.slice(6));
-                if (event.history) {
-                  yield {
-                    history: event.history as ChatMessage[],
-                    done: event.type === 'done',
-                  };
+            for (const line of lines) {
+              if (line.startsWith('data: ')) {
+                try {
+                  const event = JSON.parse(line.slice(6));
+                  if (event.history) {
+                    yield {
+                      history: event.history as ChatMessage[],
+                      done: event.type === 'done',
+                    };
+                  }
+                  if (event.error) {
+                    yield { history, error: event.error };
+                    return;
+                  }
+                } catch {
+                  continue;
                 }
-                if (event.error) {
-                  yield { history, error: event.error };
-                  return;
-                }
-              } catch {
-                continue;
               }
             }
           }
+        } finally {
+          reader.cancel().catch(() => {});
+          readerRef.current = null;
         }
       } catch (err) {
         if ((err as Error).name !== 'AbortError') {
@@ -136,6 +143,7 @@ export function useApi() {
 
   const cancelMessage = useCallback(() => {
     abortRef.current?.abort();
+    readerRef.current?.cancel().catch(() => {});
   }, []);
 
   const deleteSession = useCallback(

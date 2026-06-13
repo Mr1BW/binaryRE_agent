@@ -32,8 +32,14 @@ def build_docker_image():
     subprocess.run(docker_build_command, shell=True, check=True)
     image_built = True
 
+
 def get_binary_path_in_workspace(binary_path: str) -> str:
-    return os.path.join(os.path.dirname(binary_path), settings.AGENT_WORKSPACE_NAME, os.path.basename(binary_path))
+    return os.path.join(
+        os.path.dirname(binary_path),
+        settings.AGENT_WORKSPACE_NAME,
+        os.path.basename(binary_path),
+    )
+
 
 class CommandResult:
     def __init__(self, stdout: str, stderr: str, combined: str):
@@ -57,32 +63,36 @@ def run_command_in_docker(command: str) -> CommandResult:
         f"--platform linux/amd64 -w / {settings.DECOMPAI_RUNNER_IMAGE} "
         f"/bin/sh -c {shlex.quote(command)}"
     )
-    
+
     print(f"Running command in docker: {docker_run_command}")
-    
-    result = subprocess.run(
-        docker_run_command,
-        shell=True,
-        capture_output=True,
-        text=True,
-        check=False
-    )
-    
+
+    try:
+        result = subprocess.run(
+            docker_run_command,
+            shell=True,
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=settings.DECOMPAI_COMMAND_TIMEOUT,
+        )
+    except subprocess.TimeoutExpired:
+        return CommandResult(
+            stdout="",
+            stderr=f"Command timed out after {settings.DECOMPAI_COMMAND_TIMEOUT}s",
+            combined=f"[TIMEOUT] Command exceeded {settings.DECOMPAI_COMMAND_TIMEOUT}s",
+        )
+
     # Combine outputs with separator if stderr is not empty
     combined = result.stdout
     if result.stderr:
         combined += "\n=== STDERR ===\n" + result.stderr
-    
-    return CommandResult(
-        stdout=result.stdout,
-        stderr=result.stderr,
-        combined=combined
-    )
+
+    return CommandResult(stdout=result.stdout, stderr=result.stderr, combined=combined)
 
 
 def hash_file(filepath: str) -> str:
     hasher = hashlib.sha256()
-    with open(filepath, 'rb') as f:
+    with open(filepath, "rb") as f:
         for chunk in iter(lambda: f.read(4096), b""):
             hasher.update(chunk)
     return hasher.hexdigest()
@@ -95,8 +105,7 @@ def create_session_for_binary(binary_source_path: str) -> str:
     session_path = os.path.join(settings.ANALYSIS_SESSIONS_ROOT, binary_hash)
     os.makedirs(session_path, exist_ok=True)
     # Create agent workspace directory if it doesn't exist
-    agent_workspace_path = os.path.join(
-        session_path, settings.AGENT_WORKSPACE_NAME)
+    agent_workspace_path = os.path.join(session_path, settings.AGENT_WORKSPACE_NAME)
     os.makedirs(agent_workspace_path, exist_ok=True)
     # Copy the binary into the session directory
     binary_filename = os.path.basename(binary_source_path)
@@ -115,9 +124,7 @@ def create_session_for_binary(binary_source_path: str) -> str:
 
 def compile(target: str, c_code_path: str, binary_path: str):
     # TODO: Fix this to put the source code in the session directory
-    run_command_in_docker(
-        f"gcc -o /{binary_path} /{c_code_path} -lm"
-    )
+    run_command_in_docker(f"gcc -o /{binary_path} /{c_code_path} -lm")
 
 
 def detect_architecture(binary_path: str) -> str:
@@ -131,10 +138,13 @@ def detect_architecture(binary_path: str) -> str:
         return "arm"
     elif "x86-64" in output:
         return "x86_64"
-    elif "Intel 80386" in output:
+    elif "Intel 80386" in output or "i386" in output or "80386" in output:
+        return "i386"
+    elif "CGCE" in output or "DECREE" in output:
         return "i386"
     else:
         return "unknown"
+
 
 def objdump(args: str) -> str:
     """
@@ -150,6 +160,7 @@ def objdump(args: str) -> str:
 
     arch = detect_architecture(binary_path)
     arch_flag = ""
+    binary_flag = ""
 
     objdump_command = "objdump"
     if arch.startswith("mips"):
@@ -158,10 +169,21 @@ def objdump(args: str) -> str:
     elif arch == "arm":
         arch_flag = "-m arm"
     elif arch == "i386":
+        arch_flag = ""
+        result = run_command_in_docker(f"file {binary_path}")
+        if "CGCE" in result.stdout or "DECREE" in result.stdout:
+            binary_flag = "-b binary"
+            arch_flag = "-m i386"
+    elif arch == "unknown":
         arch_flag = "-m i386"
-    # no arch_flag needed for x86_64 or unknown
+        binary_flag = "-b binary"
 
-    full_command = f"{objdump_command} {arch_flag} {args}"
+    if binary_flag:
+        full_command = (
+            f"{objdump_command} {binary_flag} {arch_flag} {args} | head -n 8000"
+        )
+    else:
+        full_command = f"{objdump_command} {arch_flag} {args}"
 
     try:
         result = run_command_in_docker(full_command)
@@ -169,8 +191,8 @@ def objdump(args: str) -> str:
     except subprocess.CalledProcessError as e:
         print(f"[objdump] Error on {binary_path}: {e.stderr}")
         return ""
-    
-    
+
+
 def disassemble_binary(binary_path, function_name=None, target_platform: str = "linux"):
     asm = objdump(f"-ds {binary_path}")
 
@@ -178,7 +200,7 @@ def disassemble_binary(binary_path, function_name=None, target_platform: str = "
         return asm
     else:
         return disassemble_function(asm, function_name)
-    
+
 
 def disassemble_section(binary_path, section_name):
     input_asm = disassemble_binary(binary_path)
@@ -199,7 +221,7 @@ def disassemble_function(binary_path, function_name):
     input_asm = disassemble_binary(binary_path)
 
     # Split the disassembled output into blocks separated by double newlines
-    blocks = input_asm.split('\n\n')
+    blocks = input_asm.split("\n\n")
 
     # Look for a block whose first line ends with the function marker
     for block in blocks:
@@ -244,11 +266,13 @@ def disassemble(input_path, function_name):
     if input_path.endswith(".c"):
         print("Input detected as C code. Compiling and disassembling...")
         disassembled_code = compile_and_disassemble_c_code(
-            input_path, function_name, target_platform)
+            input_path, function_name, target_platform
+        )
     else:
         print("Input detected as binary. Disassembling...")
         disassembled_code = disassemble_binary(
-            input_path, function_name, target_platform)
+            input_path, function_name, target_platform
+        )
 
     return disassembled_code
 
@@ -273,11 +297,11 @@ def summarize_assembly(objdump_output=None, binary_path=None):
 
     # Extract architecture and start address
     arch_match = re.search(r"architecture:\s+([^\n,]+)", objdump_output)
-    start_addr_match = re.search(
-        r"start address\s+(0x[0-9a-fA-F]+)", objdump_output)
+    start_addr_match = re.search(r"start address\s+(0x[0-9a-fA-F]+)", objdump_output)
     summary["architecture"] = arch_match.group(1) if arch_match else "Unknown"
-    summary["start_address"] = start_addr_match.group(
-        1) if start_addr_match else "Unknown"
+    summary["start_address"] = (
+        start_addr_match.group(1) if start_addr_match else "Unknown"
+    )
 
     # Extract program headers
     program_headers = re.findall(
@@ -301,12 +325,13 @@ def summarize_assembly(objdump_output=None, binary_path=None):
 
     # Extract dynamic section
     dynamic_section_match = re.search(
-        r"Dynamic Section:(.*?)Version References:", objdump_output, re.S)
+        r"Dynamic Section:(.*?)Version References:", objdump_output, re.S
+    )
     if dynamic_section_match:
         dynamic_entries = re.findall(
-            r"([A-Z_]+)\s+(0x[0-9a-f]+|.+)", dynamic_section_match.group(1))
-        summary["dynamic_section"] = {entry[0]: entry[1]
-                                      for entry in dynamic_entries}
+            r"([A-Z_]+)\s+(0x[0-9a-f]+|.+)", dynamic_section_match.group(1)
+        )
+        summary["dynamic_section"] = {entry[0]: entry[1] for entry in dynamic_entries}
 
     # Extract sections and their properties
     sections = re.findall(
@@ -378,7 +403,9 @@ def get_string_at_address(binary_path: str, address: int) -> str:
     return result.combined.strip()
 
 
-def run_ghidra_post_script(binary_path: str, script_path: str, script_args: str = "") -> str:
+def run_ghidra_post_script(
+    binary_path: str, script_path: str, script_args: str = ""
+) -> str:
     """
     Runs a Ghidra post-script using analyzeHeadless.
     Args:
@@ -388,22 +415,20 @@ def run_ghidra_post_script(binary_path: str, script_path: str, script_args: str 
     Returns:
         str: Combined output from stdout and stderr, preserving order
     """
-    print(f"Running Ghidra analyzeHeadless on {binary_path} with script {script_path} and args {script_args}")
-    
+    print(
+        f"Running Ghidra analyzeHeadless on {binary_path} with script {script_path} and args {script_args}"
+    )
+
     # Create Ghidra project directory
     project_dir = os.path.dirname(binary_path)
     project_name = "ghidra_project"
-    
+
     # Check if project already exists
     project_exists = os.path.exists(os.path.join(project_dir, f"{project_name}.gpr"))
-    
+
     # Build the command
-    command_parts = [
-        "analyzeHeadless",
-        project_dir,
-        project_name
-    ]
-    
+    command_parts = ["analyzeHeadless", project_dir, project_name]
+
     # Only add import if project doesn't exist
     if not project_exists:
         print(f"Importing {binary_path} into Ghidra project {project_name}")
@@ -411,14 +436,18 @@ def run_ghidra_post_script(binary_path: str, script_path: str, script_args: str 
     else:
         print(f"Ghidra project {project_name} already exists")
         command_parts.extend(["-process", os.path.basename(binary_path)])
-    
+
     # Add script parameters
-    command_parts.extend([
-        "-scriptPath", os.path.dirname(script_path),
-        "-postScript", os.path.basename(script_path),
-        script_args
-    ])
-    
+    command_parts.extend(
+        [
+            "-scriptPath",
+            os.path.dirname(script_path),
+            "-postScript",
+            os.path.basename(script_path),
+            script_args,
+        ]
+    )
+
     # Run Ghidra analyzeHeadless
     command = " ".join(command_parts)
     result = run_command_in_docker(command)
@@ -435,12 +464,16 @@ def decompile_function_with_ghidra(binary_path: str, function_name: str) -> str:
         str: Decompiled function code
     """
     # Get the source script path
-    source_script_path = os.path.join(os.path.dirname(__file__), "ghidra_scripts", "decompile_function.py")
-    
+    source_script_path = os.path.join(
+        os.path.dirname(__file__), "ghidra_scripts", "decompile_function.py"
+    )
+
     # Copy the script to the workspace
-    workspace_script_path = os.path.join(os.path.dirname(binary_path), "decompile_function.py")
+    workspace_script_path = os.path.join(
+        os.path.dirname(binary_path), "decompile_function.py"
+    )
     shutil.copy2(source_script_path, workspace_script_path)
-    
+
     # Run the script
     return run_ghidra_post_script(binary_path, workspace_script_path, function_name)
 

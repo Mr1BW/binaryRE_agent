@@ -29,6 +29,7 @@ class Settings(BaseSettings):
     GRADIO_SERVER_NAME: str = Field(default="0.0.0.0")
     GRADIO_SERVER_PORT: int = Field(default=7860)
     GRADIO_SHARE: bool = Field(default=False)
+    DECOMPAI_COMMAND_TIMEOUT: int = Field(default=60)
 
 
 settings = Settings()

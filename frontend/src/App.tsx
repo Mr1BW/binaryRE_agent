@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import type { ChatMessage, Session } from './types';
 import { useApi } from './hooks/useApi';
 import Sidebar from './components/Sidebar';
@@ -10,12 +10,18 @@ export default function App() {
   const api = useApi();
   const [activeSession, setActiveSession] = useState<Session | null>(null);
   const [activeSessionHash, setActiveSessionHash] = useState<string | null>(null);
+  const activeSessionHashRef = useRef<string | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [isStreaming, setIsStreaming] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     api.loadSessions();
+  }, []);
+
+  const setSessionHash = useCallback((hash: string | null) => {
+    activeSessionHashRef.current = hash;
+    setActiveSessionHash(hash);
   }, []);
 
   const handleUpload = useCallback(
@@ -25,7 +31,7 @@ export default function App() {
 
       if (result.success && result.sessionHash) {
         setActiveSession(null);
-        setActiveSessionHash(result.sessionHash);
+        setSessionHash(result.sessionHash);
         setError(null);
 
         const history = await api.loadSessionHistory(result.sessionHash);
@@ -34,27 +40,29 @@ export default function App() {
         setError('上传二进制文件失败。后端是否正在运行？');
       }
     },
-    [api]
+    [api, setSessionHash]
   );
 
   const handleSessionSelect = useCallback(
     async (session: Session) => {
+      api.cancelMessage();
       setActiveSession(session);
-      setActiveSessionHash(session.full_hash);
+      setSessionHash(session.full_hash);
       setError(null);
+      setIsStreaming(false);
 
       const history = await api.loadSessionHistory(session.full_hash);
       setMessages(history);
     },
-    [api]
+    [api, setSessionHash]
   );
 
   const handleNewChat = useCallback(() => {
     setActiveSession(null);
-    setActiveSessionHash(null);
+    setSessionHash(null);
     setMessages([]);
     setError(null);
-  }, []);
+  }, [setSessionHash]);
 
   const handleDeleteSession = useCallback(
     async (hash: string) => {
@@ -68,7 +76,8 @@ export default function App() {
 
   const handleSend = useCallback(
     async (message: string) => {
-      if (!activeSessionHash) {
+      const sessionHash = activeSessionHashRef.current;
+      if (!sessionHash) {
         setError('请先上传一个二进制文件。');
         return;
       }
@@ -81,9 +90,10 @@ export default function App() {
       setMessages(updatedHistory);
 
       try {
-        const generator = api.sendMessage(message, messages, activeSessionHash);
+        const generator = api.sendMessage(message, messages, sessionHash);
 
         for await (const chunk of generator) {
+          if (activeSessionHashRef.current !== sessionHash) break;
           if (chunk.error) {
             setError(chunk.error);
             break;
@@ -101,7 +111,7 @@ export default function App() {
         setIsStreaming(false);
       }
     },
-    [messages, activeSessionHash, api]
+    [messages, api]
   );
 
   const handleCancel = useCallback(() => {

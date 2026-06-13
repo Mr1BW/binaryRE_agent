@@ -44,13 +44,13 @@ import shutil
 import dotenv
 import logging
 
+dotenv.load_dotenv(override=True)
+
 from src.config import settings
 import src.utils as utils
 import src.tools as tools
 from src.tools.sandboxed_shell import SandboxedShellTool
 from src.state import State
-
-dotenv.load_dotenv(override=True)
 
 logging.basicConfig(level=logging.INFO)
 

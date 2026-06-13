@@ -183,3 +183,4 @@ start.sh
 docs/*
 projects/*
 skills-lock.json
+decompai_analysis_sessions/*

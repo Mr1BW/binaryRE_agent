@@ -191,13 +191,11 @@ async def _stream_chat(
     last_tool_call_chunk_message = None
 
     async for stream_tuple in graph.astream(
-        state, config=config, stream_mode=["messages", "values", "custom"]
+        state, config=config, stream_mode=["messages", "values"]
     ):
         stream_mode, data = stream_tuple
         if stream_mode == "values":
             state = data
-        elif stream_mode == "custom":
-            pass
         else:
             msg, _metadata = data
 
